@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 
 #include <osquery/sql.h>
+#include <boost/algorithm/string/predicate.hpp>
 
 #include "osquery/carver/carver.h"
 #include "osquery/core/json.h"
@@ -96,6 +97,14 @@ TEST_F(CarverTests, test_carve_files_locally) {
   PlatformFile tar(tarPath, PF_OPEN_EXISTING | PF_READ);
   EXPECT_TRUE(tar.isValid());
   EXPECT_GT(tar.size(), 0U);
+
+  std::string manifest = "";
+  carve.manifest_.toString(manifest);
+
+  auto md5secrets = "4ccf148c2088c6388418f412743dba67";
+  auto md5evil = "92340c7d4d68286f28f2e2d8ec37d1ae";
+  EXPECT_TRUE(boost::algorithm::contains(manifest, md5secrets));
+  EXPECT_TRUE(boost::algorithm::contains(manifest, md5evil));
 }
 
 TEST_F(CarverTests, test_compression) {

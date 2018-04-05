@@ -124,7 +124,6 @@ Carver::Carver(const std::set<std::string>& paths,
   // Stash the work ID to be POSTed with the carve initial request
   requestId_ = requestId;
 
-  // TODO: Adding in a manifest file of all carved files might be nice.
   carveDir_ =
       fs::temp_directory_path() / fs::path(kCarvePathPrefix + carveGuid_);
   auto ret = fs::create_directory(carveDir_);
@@ -140,6 +139,8 @@ Carver::Carver(const std::set<std::string>& paths,
 
   // Update the DB to reflect that the carve is pending.
   updateCarveValue(carveGuid_, "status", "PENDING");
+
+  manifest_ = JSON::newArray();
 };
 
 Carver::~Carver() {
@@ -147,7 +148,7 @@ Carver::~Carver() {
 }
 
 void Carver::start() {
-  // If status_ is not Ok, the creation of our tmp FS failed
+    // If status_ is not Ok, the creation of our tmp FS failed
   if (!status_.ok()) {
     LOG(WARNING) << "Carver has not been properly constructed";
     return;
@@ -222,6 +223,9 @@ Status Carver::carve(const boost::filesystem::path& path) {
   auto blkCount = ceil(static_cast<double>(src.size()) /
                        static_cast<double>(FLAGS_carver_block_size));
 
+  auto md5 = std::make_unique<Hash>(HashType::HASH_TYPE_MD5);
+  auto sha1 = std::make_unique<Hash>(HashType::HASH_TYPE_SHA1);
+
   std::vector<char> inBuff(FLAGS_carver_block_size, 0);
   for (size_t i = 0; i < blkCount; i++) {
     inBuff.clear();
@@ -231,8 +235,18 @@ Status Carver::carve(const boost::filesystem::path& path) {
       if (bytesWritten < 0) {
         return Status(1, "Error writing bytes to tmp fs");
       }
+      md5->update(inBuff.data(), bytesRead);
+      sha1->update(inBuff.data(), bytesRead);
     }
   }
+
+  JSON fileManifest;
+  fileManifest.add("path", path.string());
+  fileManifest.add("size", src.size());
+  fileManifest.add("md5", md5->digest());
+  fileManifest.add("sha1", sha1->digest());
+
+  manifest_.push(fileManifest.doc());
 
   return Status(0, "Ok");
 };
@@ -254,6 +268,7 @@ Status Carver::postCarve(const boost::filesystem::path& path) {
   startParams.add("carve_id", carveGuid_);
   startParams.add("request_id", requestId_);
   startParams.add("node_key", getNodeKey("tls"));
+  startParams.add("manifest", manifest_.doc());
 
   auto status = startRequest.call(startParams);
   if (!status.ok()) {

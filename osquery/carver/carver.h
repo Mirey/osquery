@@ -13,6 +13,7 @@
 #include <set>
 #include <string>
 
+#include "osquery/core/json.h"
 #include <osquery/dispatcher.h>
 #include <osquery/filesystem.h>
 
@@ -138,6 +139,9 @@ class Carver : public InternalRunnable {
 
   // Running status of the carver
   Status status_;
+
+  // Running file manifest - built as files are carved.
+  JSON manifest_;
 
  private:
   friend class CarverTests;
